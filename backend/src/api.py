@@ -26,7 +26,7 @@ CORS(app)
 # !! NOTE THIS MUST BE UNCOMMENTED ON FIRST RUN
 # ----------------------------------------------------------------------------#
 
-db_drop_and_create_all()
+# db_drop_and_create_all()
 
 #----------------------------------------------------------------------------#
 # ROUTES 😇😇😇😇
@@ -45,21 +45,15 @@ db_drop_and_create_all()
 
 @app.route('/drinks', methods=['GET'])
 def take_all_drinks():
-    try:
-        available_drinks = Drink.query.all()
-        drinks = [drink.short() for drink in available_drinks]
+    drinks = Drink.query.all()
 
-        if drinks is None:
-            abort(404)
-
-        return jsonify({
-            'success': True,
-            'drinks': available_drinks
-        }), 200
-
-    except Exception as error:
-        print(error)  # Display and Show Errors in Shell GUI
+    if (len(drinks) < 1):
         abort(404)
+
+    return jsonify({
+        'success': True,
+        'drinks': [drink.short() for drink in drinks]
+    })
 
 
 # ----------------------------------------------------------------------------#
@@ -75,21 +69,15 @@ def take_all_drinks():
 @app.route('/drinks-detail', methods=['GET'])
 @requires_auth('get:drinks-detail')
 def get_drinks_detail(payload):
-    try:
-        drinks_dtl = Drink.query.order_by(Drink.id).all()
-        drinks = [drink.long() for drink in drinks_dtl]
+    drinks = Drink.query.all()
 
-        if drinks is None:
-            abort(404)
-
-        return jsonify({
-            'success': True,
-            'drinks': drinks_dtl
-        }), 200
-
-    except Exception as error:
-        print(error)  # Display and Show Errors in Shell GUI
+    if(len(drinks) < 1):
         abort(404)
+
+    return jsonify({
+        'success': True,
+        'drinks': [drink.long() for drink in drinks]
+    })
 
 # ----------------------------------------------------------------------------#
 # @TODO IS DONE 100% 😇
@@ -106,29 +94,28 @@ def get_drinks_detail(payload):
 @app.route('/drinks', methods=['POST'])
 @requires_auth('post:drinks')
 def add_drinks(payload):
+    body = request.get_json()
+
+    for required_field in ['title', 'recipe']:
+        if required_field not in body or body[required_field] == '':
+            abort(422)
+
     try:
-        # Get body from request
-        body = request.get_json()
-        if body is None:
-            abort(
-                400, {
-                    'message': 'request does not contain a valid JSON body.'})
+        drink = Drink(title=body['title'],
+                      recipe=json.dumps(body['recipe']))
+        drink.insert()
 
-        new_title = body.get('title')
-        new_recipe = body.get('recipe')
-
-        new_drink = Drink(title=new_title, recipe=json.dumps(new_recipe))
-        new_drink = Drink.query.filter_by(id=new_drink.id).first()
-        new_drink.insert()
+        drinks = Drink.query.all()
+        if(len(drinks) < 1):
+            abort(404)
 
         return jsonify({
-            "success": True,
-            "drinks": [new_drink.long()]
-        }), 200
+            'success': True,
+            'drinks': [drink.long() for drink in drinks]
+        })
 
-    except Exception as error:
-        print(error)  # Display and Show Errors in Shell GUI
-        abort(422)
+    except BaseException:
+        abort(500)
 
 # ----------------------------------------------------------------------------#
 # @TODO IS DONE 100% 😇
@@ -147,35 +134,34 @@ def add_drinks(payload):
 @app.route('/drinks/<int:drink_id>', methods=['PATCH'])
 @requires_auth('patch:drinks')
 def update_drink(payload, drink_id):
+    drink = Drink.query.filter(Drink.id == drink_id).one_or_none()
+    if not drink:
+        abort(404)
+
+    body = request.get_json()
+    for required_field in ['title', 'recipe']:
+        if required_field in body and body[required_field] == '':
+            abort(404)
+
     try:
-        # Get body from request
-        body = request.get_json()
-        update_title = body.get('title', None)
-        update_recipe = body.get('recipe', None)
+        title = body.get('title', drink.title)
+        recipe = body.get('recipe')
 
-        if body is None:
-            abort(
-                400, {
-                    'message': 'request does not contain a valid JSON body.'})
+        drink.title = title
+        drink.recipe = json.dumps(recipe) if recipe else drink.recipe
+        drink.update()
 
-        updated_drinks = Drink.query.filter(Drink.id == drink_id).one_or_none()
-
-        if update_title:
-            updated_drinks.title = update_title
-
-        if update_recipe:
-            updated_drinks.recipe = update_recipe
-
-        updated_drinks.update()
+        drinks = Drink.query.all()
+        if(len(drinks) < 1):
+            abort(404)
 
         return jsonify({
-            "success": True,
-            "drinks": [updated_drinks.long()]
-        }), 200
+            'success': True,
+            'drinks': [drink.long() for drink in drinks]
+        })
 
-    except Exception as error:
-        print(error)  # Display and Show Errors in Shell GUI
-        abort(404)
+    except BaseException:
+        abort(500)
 
 # ----------------------------------------------------------------------------#
 # @TODO IS DONE 100% 😇
@@ -193,33 +179,24 @@ def update_drink(payload, drink_id):
 @app.route('/drinks/<int:drink_id>', methods=['DELETE'])
 @requires_auth('delete:drinks')
 def delete_drinks(payload, drink_id):
-    try:
-
-        if drink_id is None:
-            abort(422, {'message': 'Oops! Please provide valid drink id'})
-
-        delete_drink = Drink.query.filter(Drink.id == drink_id).one_or_none()
-
-        if delete_drink is None:
-            abort(
-                404, {
-                    'message': 'Drink with id {} not found in database.'.format(drink_id)})
-
-        delete_drink.delete()
-
-        return jsonify({
-            "success": True,
-            "delete": drink_id
-        }), 200
-
-    except Exception as error:
-        print(error)  # Display and Show Errors in Shell GUI
+    drink = Drink.query.filter(Drink.id == drink_id).one_or_none()
+    if not drink:
         abort(404)
 
+    try:
+        drink.delete()
+        return jsonify({
+            'success': True,
+            'delete': drink_id
+        })
+
+    except BaseException:
+        abort(500)
 
 #----------------------------------------------------------------------------#
 # Error Handling 😇😇😇😇
 #----------------------------------------------------------------------------#
+
 
 @app.errorhandler(400)
 def bad_request(error):
@@ -239,6 +216,15 @@ def authentication_error(error):
     }), 401
 
 
+@app.errorhandler(403)
+def permissionError(error):
+    return jsonify({
+        "success": False,
+        "error": 403,
+        "message": "Oops! Permission denied"
+    }), 403
+
+
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({
@@ -255,6 +241,15 @@ def unprocessable(error):
         "error": 422,
         "message": "Oops! unprocessable"
     }), 422
+
+
+@app.errorhandler(500)
+def server_error(error):
+    return jsonify({
+        "success": False,
+        "error": 500,
+        "message": "Oops! Something went wrong"
+    }), 500
 
 # ----------------------------------------------------------------------------#
 # @TODO IS DONE 100% 😇
